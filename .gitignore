@@ -11,3 +11,6 @@ __pycache__/
 .pre-*/
 .launcher-*.app/
 *.before-*.bak
+
+# Built release assets
+dist/

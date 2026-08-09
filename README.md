@@ -22,6 +22,19 @@ Human Shell helps when manually validating setup commands, testing scripts and C
 
 It is not a debugger and does not inspect command internals. It surfaces the exit status already returned by the previous command.
 
+## Install from a release asset
+
+Download the versioned standalone installer, inspect or syntax-check it, then run it:
+
+```zsh
+curl -fLO https://github.com/haiggoh/human-shell/releases/download/v1.1.0/human-shell-installer-v1.1.0.zsh
+zsh -n human-shell-installer-v1.1.0.zsh
+zsh human-shell-installer-v1.1.0.zsh
+source "$HOME/.zshrc"
+```
+
+The installer verifies the release archive, installs source under `~/.local/share/human-shell/current`, generates both launchers locally, and copies the Terminal icon from this Mac. Release assets also include a reproducible source archive and `SHA256SUMS`.
+
 ## Installation
 
 ```zsh
