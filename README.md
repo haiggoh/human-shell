@@ -32,14 +32,14 @@ human-shell-install
 source ~/.zshrc
 ```
 
-The explicit setup command installs the per-user source, updates `.zshrc` with a bounded managed block, and generates both launchers under `~/Applications` using this Mac's local Terminal icon.
+The explicit setup command installs the per-user source, updates `.zshrc` with a bounded managed block, generates both launchers under `~/Applications` using this Mac's local Terminal icon, and adds both launchers to the Dock. Pass `human-shell-install --no-dock` to skip Dock changes.
 
 ### Standalone release installer
 
 ```zsh
-curl -fLO https://github.com/haiggoh/human-shell/releases/download/v1.1.0/human-shell-installer-v1.1.0.zsh
-zsh -n human-shell-installer-v1.1.0.zsh
-zsh human-shell-installer-v1.1.0.zsh
+curl -fLO https://github.com/haiggoh/human-shell/releases/download/v1.1.1/human-shell-installer-v1.1.1.zsh
+zsh -n human-shell-installer-v1.1.1.zsh
+zsh human-shell-installer-v1.1.1.zsh
 source ~/.zshrc
 ```
 
@@ -56,6 +56,8 @@ Human Shell uses a per-user installation and does not require `sudo`.
 | Active packaged source | `~/.local/share/human-shell/current` |
 | Shell integration | Managed block in `~/.zshrc` |
 | Development checkout, if used | User-selected clone directory |
+
+`~/Applications` is the per-user Applications directory. It is used deliberately so Human Shell does not require administrator privileges or write to `/Applications`.
 
 ## Test
 
@@ -92,7 +94,7 @@ Human Shell is opt-in. Ordinary Terminal windows and noninteractive scripts rema
 
 ## Terminal icon
 
-The repository does not redistribute Apple's Terminal icon. The installer copies it from the user's local Terminal.app into each generated launcher. The icon remains Apple's property.
+The repository does not redistribute Apple's Terminal icon. The installer replaces each generated AppleScript applet's native `applet.icns` with the icon from this Mac's local Terminal.app, removes conflicting generated icon metadata, re-signs the apps, and refreshes Launch Services. The icon remains Apple's property.
 
 ## Alternative installation layouts
 

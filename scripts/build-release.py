@@ -4,13 +4,13 @@ import gzip, hashlib, io, os, stat, sys, tarfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = sys.argv[1] if len(sys.argv) > 1 else "1.1.0"
+VERSION = sys.argv[1] if len(sys.argv) > 1 else "1.1.1"
 DIST = ROOT / "dist"
 PREFIX = f"human-shell-{VERSION}"
 FILES = [
     "human-shell.zsh", "Human Shell.applescript",
     "Human Shell Failures Only.applescript", "install.sh", "uninstall.sh",
-    "README.md", "LICENSE",
+    "README.md", "LICENSE", "CHANGELOG.md",
 ]
 DIST.mkdir(exist_ok=True)
 archive = DIST / f"{PREFIX}.tar.gz"
@@ -43,9 +43,9 @@ if [[ -n "${{HUMAN_SHELL_ARCHIVE:-}}" ]]; then
 elif curl -fL --retry 3 -o "$archive" "$url"; then
   print "PASS: downloaded Human Shell v$version."
 else
-  status=$?
-  print -u2 "FAIL: download exited with status $status."
-  exit "$status"
+  exit_status=$?
+  print -u2 "FAIL: download exited with status $exit_status."
+  exit "$exit_status"
 fi
 actual_sha="$(shasum -a 256 "$archive" | awk '{{print $1}}')"
 [[ "$actual_sha" == "$expected_sha" ]] || {{ print -u2 "FAIL: archive checksum mismatch."; exit 1; }}
@@ -61,13 +61,13 @@ cp -R "$source_dir" "$staging"
 if [[ -e "$destination" ]]; then mv "$destination" "$backup"; print "PASS: previous installation backed up to $backup"; fi
 mv "$staging" "$destination"
 chmod 755 "$destination/install.sh" "$destination/uninstall.sh"
-if "$destination/install.sh"; then
+if "$destination/install.sh" "$@"; then
   print "PASS: Human Shell v$version installed from release asset."
 else
-  status=$?
-  print -u2 "FAIL: installer exited with status $status."
+  exit_status=$?
+  print -u2 "FAIL: installer exited with status $exit_status."
   [[ -e "$backup" ]] && {{ rm -rf "$destination"; mv "$backup" "$destination"; print -u2 "Restored previous installation."; }}
-  exit "$status"
+  exit "$exit_status"
 fi
 print 'Run: source "$HOME/.zshrc"'
 ''', encoding="utf-8")
