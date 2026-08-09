@@ -22,30 +22,40 @@ Human Shell helps when manually validating setup commands, testing scripts and C
 
 It is not a debugger and does not inspect command internals. It surfaces the exit status already returned by the previous command.
 
-## Install from a release asset
+## Installation
 
-Download the versioned standalone installer, inspect or syntax-check it, then run it:
+### Homebrew — recommended
+
+```zsh
+brew install haiggoh/tap/human-shell
+human-shell-install
+source ~/.zshrc
+```
+
+The explicit setup command installs the per-user source, updates `.zshrc` with a bounded managed block, and generates both launchers under `~/Applications` using this Mac's local Terminal icon.
+
+### Standalone release installer
 
 ```zsh
 curl -fLO https://github.com/haiggoh/human-shell/releases/download/v1.1.0/human-shell-installer-v1.1.0.zsh
 zsh -n human-shell-installer-v1.1.0.zsh
 zsh human-shell-installer-v1.1.0.zsh
-source "$HOME/.zshrc"
+source ~/.zshrc
 ```
 
-The installer verifies the release archive, installs source under `~/.local/share/human-shell/current`, generates both launchers locally, and copies the Terminal icon from this Mac. Release assets also include a reproducible source archive and `SHA256SUMS`.
+The standalone installer verifies the release archive and installs source under `~/.local/share/human-shell/current` before generating the launchers locally.
 
-## Installation
+## Installed locations
 
-```zsh
-mkdir -p "$HOME/ClaudeWorkspace"
-git clone https://github.com/haiggoh/human-shell.git "$HOME/ClaudeWorkspace/human-shell"
-cd "$HOME/ClaudeWorkspace/human-shell"
-./install.sh
-source "$HOME/.zshrc"
-```
+Human Shell uses a per-user installation and does not require `sudo`.
 
-The installer creates both launchers under `~/Applications`. Drag either or both to the Dock.
+| Item | Location |
+| --- | --- |
+| All-status launcher | `~/Applications/Human Shell.app` |
+| Failures-only launcher | `~/Applications/Human Shell Failures Only.app` |
+| Active packaged source | `~/.local/share/human-shell/current` |
+| Shell integration | Managed block in `~/.zshrc` |
+| Development checkout, if used | User-selected clone directory |
 
 ## Test
 
@@ -83,6 +93,25 @@ Human Shell is opt-in. Ordinary Terminal windows and noninteractive scripts rema
 ## Terminal icon
 
 The repository does not redistribute Apple's Terminal icon. The installer copies it from the user's local Terminal.app into each generated launcher. The icon remains Apple's property.
+
+## Alternative installation layouts
+
+<details>
+<summary>Development checkout and direct repository installation</summary>
+
+Use this when you intend to modify or contribute to Human Shell:
+
+```zsh
+mkdir -p "$HOME/ClaudeWorkspace"
+git clone https://github.com/haiggoh/human-shell.git "$HOME/ClaudeWorkspace/human-shell"
+cd "$HOME/ClaudeWorkspace/human-shell"
+./install.sh
+source ~/.zshrc
+```
+
+The checkout location is user-selected. Homebrew or the standalone release installer is preferred for routine use.
+
+</details>
 
 ## Uninstall
 
