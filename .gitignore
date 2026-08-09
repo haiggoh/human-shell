@@ -1,0 +1,13 @@
+.DS_Store
+Human Shell.app/
+__pycache__/
+*.py[cod]
+*.swp
+*.swo
+*~
+
+# Local installation and validation artifacts
+.backup-*/
+.pre-*/
+.launcher-*.app/
+*.before-*.bak
