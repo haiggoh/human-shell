@@ -155,6 +155,8 @@ if (( add_to_dock )); then
     print "PASS: added both Human Shell launchers to the Dock."
   else
     print "INFO: dockutil is unavailable; both launchers were installed successfully."
+    print "INFO: install it with 'brew install dockutil' to place them automatically,"
+    print "INFO: or rerun with --no-dock to skip Dock changes without this notice."
     print "INFO: opening ~/Applications so you can drag either launcher to the Dock."
     open "$apps"
   fi

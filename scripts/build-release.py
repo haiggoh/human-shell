@@ -4,18 +4,32 @@ import gzip, hashlib, io, os, stat, sys, tarfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = sys.argv[1] if len(sys.argv) > 1 else "1.1.1"
+VERSION = sys.argv[1] if len(sys.argv) > 1 else "1.2.0"
 DIST = ROOT / "dist"
 PREFIX = f"human-shell-{VERSION}"
 FILES = [
     "human-shell.zsh", "Human Shell.applescript",
     "Human Shell Failures Only.applescript", "install.sh", "uninstall.sh",
     "README.md", "LICENSE", "CHANGELOG.md",
+    "scripts/scrub-launcher-history.zsh", "tests/run-tests.zsh",
 ]
+DIRS = ["scripts", "tests"]
+EXECUTABLE = {
+    "install.sh", "uninstall.sh",
+    "scripts/scrub-launcher-history.zsh", "tests/run-tests.zsh",
+}
 DIST.mkdir(exist_ok=True)
 archive = DIST / f"{PREFIX}.tar.gz"
 raw = io.BytesIO()
 with tarfile.open(fileobj=raw, mode="w", format=tarfile.PAX_FORMAT) as tf:
+    for name in DIRS:
+        info = tarfile.TarInfo(f"{PREFIX}/{name}")
+        info.type = tarfile.DIRTYPE
+        info.mtime = 0
+        info.uid = info.gid = 0
+        info.uname = info.gname = ""
+        info.mode = 0o755
+        tf.addfile(info)
     for name in FILES:
         data = (ROOT / name).read_bytes()
         info = tarfile.TarInfo(f"{PREFIX}/{name}")
@@ -23,7 +37,7 @@ with tarfile.open(fileobj=raw, mode="w", format=tarfile.PAX_FORMAT) as tf:
         info.mtime = 0
         info.uid = info.gid = 0
         info.uname = info.gname = ""
-        info.mode = 0o755 if name in {"install.sh", "uninstall.sh"} else 0o644
+        info.mode = 0o755 if name in EXECUTABLE else 0o644
         tf.addfile(info, io.BytesIO(data))
 archive.write_bytes(gzip.compress(raw.getvalue(), compresslevel=9, mtime=0))
 archive_sha = hashlib.sha256(archive.read_bytes()).hexdigest()
