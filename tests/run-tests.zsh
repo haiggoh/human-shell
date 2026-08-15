@@ -159,6 +159,22 @@ human-shell --nonsense 2>/dev/null
 check "an unknown mode is rejected with status 2" "2" "$?"
 
 # ---------------------------------------------------------------------------
+# The launcher's one-time screen clear does not survive into a mode switch.
+# ---------------------------------------------------------------------------
+
+check "the launcher marker is consumed, so a mode switch keeps the scrollback" \
+  "gone" \
+  "$(HUMAN_SHELL_STATUS=all HUMAN_SHELL_READY=0 HUMAN_SHELL_LAUNCHER=1 \
+     zsh -c "source '$repo/human-shell.zsh' >/dev/null 2>&1
+             print -r -- \${HUMAN_SHELL_LAUNCHER:-gone}")"
+
+check "a shell started without the launcher is unaffected" \
+  "gone" \
+  "$(HUMAN_SHELL_STATUS=all HUMAN_SHELL_READY=0 \
+     zsh -c "source '$repo/human-shell.zsh' >/dev/null 2>&1
+             print -r -- \${HUMAN_SHELL_LAUNCHER:-gone}")"
+
+# ---------------------------------------------------------------------------
 # Scrubbing launcher lines out of history written by earlier versions.
 # ---------------------------------------------------------------------------
 

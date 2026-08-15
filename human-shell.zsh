@@ -181,6 +181,11 @@ case "${HUMAN_SHELL_STATUS:-}" in
       if [[ "${HUMAN_SHELL_LAUNCHER:-0}" == "1" ]]; then
         # Preserve Terminal's Last login line and clear from row 2 downward.
         printf '\033[2;1H\033[J'
+
+        # Once only. The launcher exports this, so without unsetting it here a
+        # later mode switch in the same window would inherit it and clear the
+        # screen again, discarding the scrollback the user was reading.
+        unset HUMAN_SHELL_LAUNCHER
       fi
 
       if [[ "$HUMAN_SHELL_STATUS" == "all" ]]; then

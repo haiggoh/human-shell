@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.1
+
+Fixed
+
+- Clear the screen only on the launcher's own first prompt. The launchers export the marker that requests the clear, so switching mode inside an existing window inherited it and wiped the scrollback the user was reading. The marker is now consumed when it is used.
+
 ## 1.2.0
 
 Fixed

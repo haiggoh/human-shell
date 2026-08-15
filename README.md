@@ -57,9 +57,9 @@ The formula depends on `dockutil` because placing the launchers in the Dock is p
 ### Standalone release installer
 
 ```zsh
-curl -fLO https://github.com/haiggoh/human-shell/releases/download/v1.2.0/human-shell-installer-v1.2.0.zsh
-zsh -n human-shell-installer-v1.2.0.zsh
-zsh human-shell-installer-v1.2.0.zsh
+curl -fLO https://github.com/haiggoh/human-shell/releases/download/v1.2.1/human-shell-installer-v1.2.1.zsh
+zsh -n human-shell-installer-v1.2.1.zsh
+zsh human-shell-installer-v1.2.1.zsh
 source ~/.zshrc
 ```
 
