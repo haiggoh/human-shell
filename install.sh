@@ -166,6 +166,19 @@ fi
 
 killall Finder >/dev/null 2>&1 || true
 
+# The .zshrc backup taken above exists so a failed install can be rolled back.
+# Once the install has succeeded it is only history, and one is written per run,
+# so without this the home directory collects a copy on every install and
+# nothing ever removes them. A reap failure must not fail the install.
+zsh "$repo/scripts/reap-backups.zsh" \
+  --dir "$HOME" \
+  --prefix '.zshrc.human-shell.' \
+  --suffix '.bak' \
+  --keep "${HUMAN_SHELL_KEEP_ZSHRC_BACKUPS:-3}" \
+  --kind file \
+  --label 'zsh configuration backup' \
+  --label-plural 'zsh configuration backups' || true
+
 print
 print "Human Shell installation completed."
 print "All-status launcher:   $apps/Human Shell.app"

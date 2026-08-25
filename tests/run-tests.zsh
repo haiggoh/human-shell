@@ -319,10 +319,161 @@ check "scrubbing again is a no-op that still succeeds" "0" "$?"
 rm -rf "$scrub_dir"
 
 # ---------------------------------------------------------------------------
+# Reaping superseded backups. Both installers write a timestamped backup per
+# run so a failed install can be rolled back, and both call this to stop the
+# backups accumulating once the install has succeeded.
+# ---------------------------------------------------------------------------
+
+reaper="$repo/scripts/reap-backups.zsh"
+
+# Build a directory of backups with distinct, ordered modification times.
+# Returns the path in REPLY.
+make_backups() {
+  local kind="$1" count="$2" prefix="${3:-.previous-}" suffix="${4:-}"
+  local dir entry index
+  dir="$(mktemp -d)"
+  for index in {1..$count}; do
+    entry="$dir/${prefix}2026081${index}-120000${suffix}"
+    if [[ "$kind" == directory ]]; then
+      mkdir -p "$entry"
+      print "copy $index" > "$entry/human-shell.zsh"
+    else
+      print "backup $index" > "$entry"
+    fi
+    touch -t "2026081${index}1200" "$entry"
+  done
+  REPLY="$dir"
+}
+
+# Names of the surviving entries, oldest first, so expectations read in order.
+survivors() {
+  print -l "$1"/*(NDn) | sed "s|^$1/||" | tr '\n' ' ' | sed 's/ $//'
+}
+
+make_backups directory 5
+dir="$REPLY"
+zsh "$reaper" --dir "$dir" --prefix '.previous-' --keep 3 >/dev/null
+check "reaping keeps the newest backups and removes the oldest" \
+  ".previous-20260813-120000 .previous-20260814-120000 .previous-20260815-120000" \
+  "$(survivors "$dir")"
+
+zsh "$reaper" --dir "$dir" --prefix '.previous-' --keep 3 >/dev/null
+check "reaping again is a no-op" "3" "$(print -l "$dir"/*(ND) | grep -c .)"
+
+zsh "$reaper" --dir "$dir" --prefix '.previous-' --keep 0 >/dev/null
+check "keep 0 removes every backup" "" "$(survivors "$dir")"
+rm -rf "$dir"
+
+# The message is user-facing, so it has to agree with itself about number.
+make_backups directory 2
+dir="$REPLY"
+check "pruning exactly one is reported in the singular" \
+  "PASS: pruned 1 superseded user copy, kept the newest 1." \
+  "$(zsh "$reaper" --dir "$dir" --prefix '.previous-' --keep 1 --label 'user copy')"
+rm -rf "$dir"
+
+make_backups directory 4
+dir="$REPLY"
+check "pruning several is reported in the plural" \
+  "PASS: pruned 3 superseded user copies, kept the newest 1." \
+  "$(zsh "$reaper" --dir "$dir" --prefix '.previous-' --keep 1 \
+     --label 'user copy' --label-plural 'user copies')"
+rm -rf "$dir"
+
+make_backups directory 3
+dir="$REPLY"
+check "a label the naive rule fits needs no explicit plural" \
+  "PASS: pruned 2 superseded backups, kept the newest 1." \
+  "$(zsh "$reaper" --dir "$dir" --prefix '.previous-' --keep 1)"
+rm -rf "$dir"
+
+# The .zshrc backups are files with a suffix, not directories.
+make_backups file 4 '.zshrc.human-shell.' '.bak'
+dir="$REPLY"
+zsh "$reaper" --dir "$dir" --prefix '.zshrc.human-shell.' --suffix '.bak' \
+  --keep 2 --kind file >/dev/null
+check "file backups are reaped by prefix and suffix" \
+  ".zshrc.human-shell.20260813-120000.bak .zshrc.human-shell.20260814-120000.bak" \
+  "$(survivors "$dir")"
+
+# Selection must be narrow: a similar name that is not ours has to survive.
+print 'unrelated' > "$dir/.zshrc.20260808-152824.bak"
+print 'mine' > "$dir/.zshrc.prototype-removal.20260825-000000.bak"
+print 'wrong suffix' > "$dir/.zshrc.human-shell.20260801-120000.txt"
+zsh "$reaper" --dir "$dir" --prefix '.zshrc.human-shell.' --suffix '.bak' \
+  --keep 0 --kind file >/dev/null
+check "a backup with a different prefix is not ours to remove" \
+  "0" "$([[ -f "$dir/.zshrc.20260808-152824.bak" ]] && print 0 || print MISSING)"
+check "a backup with a longer prefix is not ours to remove" \
+  "0" "$([[ -f "$dir/.zshrc.prototype-removal.20260825-000000.bak" ]] && print 0 || print MISSING)"
+check "a matching prefix with the wrong suffix is left alone" \
+  "0" "$([[ -f "$dir/.zshrc.human-shell.20260801-120000.txt" ]] && print 0 || print MISSING)"
+rm -rf "$dir"
+
+# A directory reaper must not delete files, and a file reaper must not delete
+# directories, or one installer's backups would eat the other's.
+make_backups file 3 '.previous-' ''
+dir="$REPLY"
+zsh "$reaper" --dir "$dir" --prefix '.previous-' --keep 0 --kind directory >/dev/null
+check "a file is not removed by a directory reaper" \
+  "3" "$(print -l "$dir"/*(ND.) | grep -c .)"
+zsh "$reaper" --dir "$dir" --prefix '.previous-' --keep 0 --kind file >/dev/null
+check "the same entries are removed once the kind matches" \
+  "0" "$(print -l "$dir"/*(ND.) | grep -c .)"
+rm -rf "$dir"
+
+# Live state must never be a candidate.
+make_backups directory 3
+dir="$REPLY"
+mkdir -p "$dir/current"
+zsh "$reaper" --dir "$dir" --prefix '.previous-' --keep 0 >/dev/null
+check "the live installation is never a reaping candidate" \
+  "0" "$([[ -d "$dir/current" ]] && print 0 || print DESTROYED)"
+rm -rf "$dir"
+
+# An empty prefix would match every entry in the directory, so it is refused
+# rather than defaulted. This is the guard that keeps a caller bug from
+# deleting the user's home directory contents.
+scratch="$(mktemp -d)"
+print 'precious' > "$scratch/keep-me"
+zsh "$reaper" --dir "$scratch" --prefix '' --keep 0 --kind file >/dev/null 2>&1
+check "an empty prefix is refused with status 2" "2" "$?"
+check "an empty prefix deletes nothing" \
+  "0" "$([[ -f "$scratch/keep-me" ]] && print 0 || print DESTROYED)"
+
+zsh "$reaper" --prefix '.previous-' >/dev/null 2>&1
+check "a missing --dir is refused with status 2" "2" "$?"
+
+zsh "$reaper" --dir "$scratch" --prefix 'x' --keep 'lots' >/dev/null 2>&1
+check "a non-numeric --keep is refused with status 2" "2" "$?"
+
+zsh "$reaper" --dir "$scratch" --prefix 'x' --kind socket >/dev/null 2>&1
+check "an unknown --kind is refused with status 2" "2" "$?"
+
+zsh "$reaper" --bogus >/dev/null 2>&1
+check "an unknown argument is refused with status 2" "2" "$?"
+rm -rf "$scratch"
+
+# The first install has no backups yet, and an uninstalled tree may be absent.
+zsh "$reaper" --dir "/nonexistent-$$" --prefix '.previous-' >/dev/null 2>&1
+check "a directory that does not exist succeeds quietly" "0" "$?"
+
+check "a directory with no matching backups prints nothing" \
+  "" "$(scratch="$(mktemp -d)"; zsh "$reaper" --dir "$scratch" --prefix '.previous-'; rmdir "$scratch")"
+
+# The installer has to actually call the reaper, or none of the above runs.
+# Assert the invocation, not the mention: a mutation that replaced `zsh` with
+# `true` left the filename in place and this test passed anyway.
+check "install.sh actually invokes the reaper, not just mentions it" \
+  "1" "$(grep -cE '^[[:space:]]*zsh "\$repo/scripts/reap-backups\.zsh"' "$repo/install.sh")"
+check "install.sh reaps the backups it writes itself" \
+  "1" "$(grep -c "prefix '.zshrc.human-shell.'" "$repo/install.sh")"
+
+# ---------------------------------------------------------------------------
 # Shipped sources stay syntactically valid.
 # ---------------------------------------------------------------------------
 
-for script in human-shell.zsh install.sh uninstall.sh scripts/scrub-launcher-history.zsh; do
+for script in human-shell.zsh install.sh uninstall.sh scripts/scrub-launcher-history.zsh scripts/reap-backups.zsh; do
   zsh -n "$repo/$script" 2>/dev/null
   check "$script parses" "0" "$?"
 done

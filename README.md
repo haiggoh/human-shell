@@ -80,9 +80,9 @@ The formula depends on `dockutil` because placing the launchers in the Dock is p
 ### Standalone release installer
 
 ```zsh
-curl -fLO https://github.com/haiggoh/human-shell/releases/download/v1.3.0/human-shell-installer-v1.3.0.zsh
-zsh -n human-shell-installer-v1.3.0.zsh
-zsh human-shell-installer-v1.3.0.zsh
+curl -fLO https://github.com/haiggoh/human-shell/releases/download/v1.3.1/human-shell-installer-v1.3.1.zsh
+zsh -n human-shell-installer-v1.3.1.zsh
+zsh human-shell-installer-v1.3.1.zsh
 source ~/.zshrc
 ```
 
@@ -173,6 +173,17 @@ zsh scripts/scrub-launcher-history.zsh
 ```
 
 It covers the shared history file and every per-session file, backs up each file it changes into one timestamped directory under `~/.human-shell-history-backups`, edits in place so permissions are unchanged, leaves multi-line entries intact, and reports exactly what it removed. Files with nothing to remove are not touched. Pass explicit paths to limit it to those files.
+
+## Installer backups
+
+Each install saves what it is about to replace, so a failed install can be rolled back:
+
+| Backup | Written by | Retention |
+| --- | --- | --- |
+| `~/.zshrc.human-shell.<timestamp>.bak` | `install.sh` | newest 3, `HUMAN_SHELL_KEEP_ZSHRC_BACKUPS` |
+| `~/.local/share/human-shell/.previous-<timestamp>` | the Homebrew wrapper | newest 3, `HUMAN_SHELL_KEEP_PREVIOUS` |
+
+Both are pruned by `scripts/reap-backups.zsh` after the install succeeds, so neither grows without bound. Only entries matching the exact prefix and suffix above are candidates — a backup you made yourself, or one written by another tool, is never removed.
 
 ## Tests
 

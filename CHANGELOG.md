@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.1
+
+Fixed
+
+- Reap the backups the installer writes. `install.sh` saves the previous `~/.zshrc` as `~/.zshrc.human-shell.<timestamp>.bak` on every run so a failed install can be rolled back, and nothing ever removed it once the install had succeeded, so the home directory collected one file per install forever — twelve had accumulated here. The newest 3 are now kept and older ones are pruned; set `HUMAN_SHELL_KEEP_ZSHRC_BACKUPS` to change how many are retained. Backups written by anything else, including `~/.zshrc.<timestamp>.bak` and any hand-made copy, are matched by neither prefix nor suffix and are never touched.
+
+Added
+
+- `scripts/reap-backups.zsh`, the single implementation of that retention rule, shared with the Homebrew wrapper's own pruning of superseded user copies under `~/.local/share/human-shell` so the two cannot drift. Selection is deliberately narrow — an entry qualifies only if it sits directly in the given directory, starts with the given prefix, ends with the given suffix, and is of the requested kind — and an empty prefix is refused rather than defaulted, because it would match every entry in the directory.
+- Tests for the reaper: retention order, idempotence, `--keep 0`, prefix and suffix narrowness, file-versus-directory kind, that live state is never a candidate, that the singular and plural messages agree with their number, and every guard-rail rejection.
+
 ## 1.3.0
 
 Changed
