@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import gzip, hashlib, io, os, stat, sys, tarfile
+import gzip
+import subprocess, hashlib, io, os, stat, sys, tarfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -11,13 +12,25 @@ FILES = [
     "human-shell.zsh", "Human Shell.applescript",
     "Human Shell Failures Only.applescript", "install.sh", "uninstall.sh",
     "README.md", "LICENSE", "CHANGELOG.md",
-    "scripts/scrub-launcher-history.zsh", "tests/run-tests.zsh",
+    "scripts/scrub-launcher-history.zsh", "scripts/reap-backups.zsh",
+    "tests/run-tests.zsh",
 ]
 DIRS = ["scripts", "tests"]
 EXECUTABLE = {
     "install.sh", "uninstall.sh",
-    "scripts/scrub-launcher-history.zsh", "tests/run-tests.zsh",
+    "scripts/scrub-launcher-history.zsh", "scripts/reap-backups.zsh",
+    "tests/run-tests.zsh",
 }
+
+# A shipped file missing from FILES produces a tarball that fails its own tests,
+# which is only visible after publishing unless it is caught here.
+_tracked = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True,
+                          text=True, check=True).stdout.splitlines()
+_missing = [f for f in _tracked
+            if (f.endswith((".zsh", ".sh", ".applescript")) or f in {"README.md", "LICENSE", "CHANGELOG.md"})
+            and f not in FILES and not f.startswith(".")]
+if _missing:
+    raise SystemExit("FAIL: shipped files missing from FILES: " + ", ".join(sorted(_missing)))
 DIST.mkdir(exist_ok=True)
 archive = DIST / f"{PREFIX}.tar.gz"
 raw = io.BytesIO()
