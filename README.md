@@ -2,7 +2,7 @@
 
 **Visible command outcomes for interactive zsh sessions in macOS Terminal.**
 
-Human Shell is an opt-in Terminal launcher that translates the previous command's exit status into a brief human label while preserving the exact technical code. The default all-status mode confirms success in green, shows ordinary failures in red, and uses yellow for interruptions and other signal-driven stops.
+Human Shell is an opt-in Terminal launcher that translates each command's exit status into a brief human label while preserving the exact technical code. Every command's outcome is reported on its own line, right-aligned beneath that command's output, so scrolling back through a session shows which commands passed and which failed rather than only the most recent one. The default all-status mode confirms success in green, shows ordinary failures in red, and uses yellow for interruptions, signal-driven stops, and findings such as a difference or no match.
 
 A second **Human Shell Failures Only** launcher provides a quieter alternative that highlights nonzero exit codes without confirming successes. Both modes preserve normal command output, pipes, redirects, command substitutions, and unattended scripts.
 
@@ -26,13 +26,36 @@ Human Shell shows it, in the prompt, and nowhere else. The folklore is not wrong
 
 Neither mode displays a status on the initial prompt. Status reporting starts after the first command entered by the user.
 
-A status describes one command. Pressing Enter on an empty line runs nothing, so it has no outcome to report and returns a clean prompt rather than repeating the previous label.
+A status describes one command. Pressing Enter on an empty line runs nothing, so it has no outcome to report and prints nothing.
+
+## Every command keeps its own outcome
+
+A status is printed on its own line, right-aligned, directly beneath the output of the command it describes:
+
+```
+% cp notes.txt backup/
+                                                        success [exit 0]
+% ./deploy.sh
+deploy: connection refused
+                                                         failed [exit 1]
+% diff -u notes.txt backup/notes.txt
+--- notes.txt
++++ backup/notes.txt
+@@ -1 +1 @@
+-draft
++final
+                                                  diff detected [exit 1]
+```
+
+Each verdict stays where it was printed, for as long as the scrollback lasts. That is the point of the tool: after running several unrelated commands you can scroll up and see which of them failed, not just what the last one did.
+
+This is why the status is written into the scrollback rather than into the shell's right prompt. A right prompt belongs to the prompt it is drawn with — which is the prompt where the *next* command gets typed — so a right-prompt status ends up beside the following command and reads as a verdict on it. Printing the line attaches each outcome to the command that earned it.
 
 ## Coexisting with a prompt theme
 
-Human Shell writes to the right side of the prompt, and it does not take that space over. Whatever right prompt your own configuration produces is kept and shown after the status label, and it is what remains on the prompt when there is no status to show. If a theme installs its right prompt from its own hook, Human Shell adopts that value as the base and composes with it instead of replacing it.
+Human Shell never writes to `RPROMPT`, `PROMPT`, or any other prompt parameter. It prints its own line and leaves your prompt entirely alone, so a theme such as powerlevel10k or starship keeps both sides of its prompt exactly as it drew them, with nothing to configure and nothing to restore.
 
-For the label to be visible, Human Shell's hook has to run after your theme's, which means sourcing it after the theme in `~/.zshrc`. The installers append their managed block to the end of the file, so this is already the case for a standard installation. If you source `human-shell.zsh` by hand, keep it below your theme.
+Sourcing order does not matter for the status to appear. The installers append their managed block to the end of `~/.zshrc`, which is fine; sourcing `human-shell.zsh` above your theme is equally fine.
 
 ## Interactive debugging
 
@@ -57,9 +80,9 @@ The formula depends on `dockutil` because placing the launchers in the Dock is p
 ### Standalone release installer
 
 ```zsh
-curl -fLO https://github.com/haiggoh/human-shell/releases/download/v1.2.1/human-shell-installer-v1.2.1.zsh
-zsh -n human-shell-installer-v1.2.1.zsh
-zsh human-shell-installer-v1.2.1.zsh
+curl -fLO https://github.com/haiggoh/human-shell/releases/download/v1.3.0/human-shell-installer-v1.3.0.zsh
+zsh -n human-shell-installer-v1.3.0.zsh
+zsh human-shell-installer-v1.3.0.zsh
 source ~/.zshrc
 ```
 
@@ -97,7 +120,8 @@ Human Shell preserves the exact exit code and adds only meanings that are portab
 | Exit status | Display |
 | ---: | --- |
 | `0` | `success [exit 0]` |
-| `1–125` | `failed [exit N]` |
+| `1` | A findings label for a command in the table below, otherwise `failed [exit 1]` |
+| `2–125` | `failed [exit N]` |
 | `126` | `can't run [exit 126]` |
 | `127` | `not found [exit 127]` |
 | `128` | `failed [exit 128]` |
@@ -107,6 +131,27 @@ Human Shell preserves the exact exit code and adds only meanings that are portab
 Common signals receive short labels such as `interrupted [exit 130 / SIGINT]`, `crashed [exit 139 / SIGSEGV]`, and `terminated [exit 143 / SIGTERM]`.
 
 Most other nonzero codes are application-defined. Human Shell therefore says `failed [exit N]` instead of inventing a meaning; consult the command's own error output or documentation for details.
+
+### Commands that report a finding through status 1
+
+Some commands use status 1 to report what they found rather than that something went wrong. Running `diff` to see what differs, or `grep` to find out whether a pattern is present, is the normal case: "they differ" and "no match" are answers, and the difference is usually intended. Calling either a red failure reports an error that did not happen, so these commands get a yellow label at status 1 instead:
+
+| Command | Status 1 shows |
+| --- | --- |
+| `diff`, `diff3`, `colordiff`, `cmp`, `git diff` | `diff detected [exit 1]` |
+| `grep`, `egrep`, `fgrep`, `rg`, `ag`, `ack`, `git grep` | `no match [exit 1]` |
+
+Status 2 and above is untouched and still red, because for both families that really is an error: `diff` on a missing file and `grep` on an unreadable one both report `failed [exit 2]`.
+
+The table only applies to a command on its own. In a pipeline or an `&&`, `||` or `;` list the exit status belongs to some other command, so `diff a b \| head` reports the status of `head` as it should. Leading variable assignments, and wrappers such as `sudo` that pass the status through, are looked past.
+
+The table is a documented extension point. To label another command's status 1, add a key after Human Shell is sourced:
+
+```zsh
+HUMAN_SHELL_EXIT1_LABELS[my-checker]='nothing to do'
+```
+
+Or define `HUMAN_SHELL_EXIT1_LABELS` before sourcing to replace the defaults outright, which is also how you opt a shipped command back out — an entry you set is never merged with the defaults.
 
 ## Isolation
 
@@ -135,7 +180,7 @@ It covers the shared history file and every per-session file, backs up each file
 zsh tests/run-tests.zsh
 ```
 
-The suite covers the exit-status-to-label table including the signal fallbacks, the right-prompt composition, the one-status-per-command rule, the history filter, and a syntax or compile check of every shipped script and applet. It needs no terminal and changes nothing on the system.
+The suite covers the exit-status-to-label table including the signal fallbacks, the status-1 findings table for both the diff and search families including the commands it must *not* classify, the right-aligned report line, the one-status-per-command rule, the history filter, and a syntax or compile check of every shipped script and applet. It needs no terminal and changes nothing on the system.
 
 ## Terminal icon
 

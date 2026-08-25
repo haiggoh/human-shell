@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3.0
+
+Changed
+
+- Report each command's outcome on its own line, right-aligned beneath that command's output, instead of in the shell's right prompt. A right prompt belongs to the prompt it is drawn with, which is the prompt where the *next* command is typed, so the scrollback read `% echo two          failed [exit 1]` when it was the command before `echo two` that failed. Every outcome now stays attached to the command that earned it, and stays there for as long as the scrollback lasts, which is what makes a session reviewable after the fact rather than only at the moment the status appears.
+
+  This supersedes 1.2.0's right-prompt composition rather than reverting it: Human Shell no longer assigns `RPROMPT` at all, so a theme's right prompt is not merely preserved but never touched, and sourcing order no longer matters. 1.2.0's rule that a bare Enter reports nothing is unchanged and now has nothing to clear, because a printed outcome does not move.
+
+Added
+
+- A status-1 findings table, so a command that reports what it found through exit status 1 is not called a failure. `diff`, `diff3`, `colordiff`, `cmp` and `git diff` show a yellow `diff detected [exit 1]`, and `grep`, `egrep`, `fgrep`, `rg`, `ag`, `ack` and `git grep` show a yellow `no match [exit 1]`. Status 2 and above stays a red failure, because for both families that really is an error. Only a lone simple command is classified — in a pipeline or an `&&`, `||` or `;` list the status belongs to some other command — and leading variable assignments and status-passing wrappers such as `sudo` are looked past. Extend it with `HUMAN_SHELL_EXIT1_LABELS[my-checker]='nothing to do'`, or define the whole array before sourcing to replace the defaults.
+- Tests for the findings table including the commands it must *not* classify, and for the right-aligned report line.
+
 ## 1.2.1
 
 Fixed

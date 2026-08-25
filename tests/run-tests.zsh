@@ -1,7 +1,8 @@
 #!/bin/zsh
 # Tests for the parts of Human Shell that can be checked without a terminal:
-# the exit-status-to-label table, the right-prompt composition, the one-badge-
-# per-command rule, and the history filter. Run with: zsh tests/run-tests.zsh
+# the exit-status-to-label table, the exit-1 semantics table, the right-aligned
+# report line, the one-report-per-command rule, and the history filter.
+# Run with: zsh tests/run-tests.zsh
 
 repo="${0:A:h:h}"
 
@@ -33,9 +34,10 @@ check "sourcing without HUMAN_SHELL_STATUS registers no precmd hook" \
 # ---------------------------------------------------------------------------
 
 badge_is() {
-  local exit_code="$1" expected="$2"
-  _human_shell_badge "$exit_code"
-  check "exit $exit_code in ${HUMAN_SHELL_STATUS} mode" "$expected" "$HUMAN_SHELL_BADGE"
+  local exit_code="$1" expected="$2" command="${3-}"
+  _human_shell_badge "$exit_code" "$command"
+  check "exit $exit_code${command:+ after \`$command\`} in ${HUMAN_SHELL_STATUS} mode" \
+    "$expected" "$HUMAN_SHELL_BADGE"
 }
 
 HUMAN_SHELL_STATUS=all
@@ -78,62 +80,166 @@ badge_is 1   '%F{red}failed [exit 1]%f'
 badge_is 130 '%F{yellow}interrupted [exit 130 / SIGINT]%f'
 
 # ---------------------------------------------------------------------------
-# Composition: a right prompt the user already has must survive.
+# Exit status 1 from a command that reports a finding, not a fault.
 # ---------------------------------------------------------------------------
 
 HUMAN_SHELL_STATUS=all
 
-HUMAN_SHELL_OUTER_RPROMPT='%F{blue}THEME%f'
-RPROMPT=''
-_human_shell_compose '%F{red}failed [exit 1]%f'
-check "badge is composed in front of an existing right prompt" \
-  '%F{red}failed [exit 1]%f %F{blue}THEME%f' "$RPROMPT"
+badge_is 1 '%F{yellow}diff detected [exit 1]%f' 'diff -u a.txt b.txt'
+badge_is 1 '%F{yellow}diff detected [exit 1]%f' 'cmp a.bin b.bin'
+badge_is 1 '%F{yellow}diff detected [exit 1]%f' 'colordiff a b'
+badge_is 1 '%F{yellow}diff detected [exit 1]%f' 'diff3 a b c'
 
-_human_shell_compose ''
-check "an existing right prompt is restored exactly when there is no badge" \
-  '%F{blue}THEME%f' "$RPROMPT"
+# The subcommand form is matched ahead of the bare command name.
+badge_is 1 '%F{yellow}diff detected [exit 1]%f' 'git diff --exit-code'
 
-HUMAN_SHELL_OUTER_RPROMPT=''
-_human_shell_compose '%F{red}failed [exit 1]%f'
-check "badge stands alone when there is no existing right prompt" \
-  '%F{red}failed [exit 1]%f' "$RPROMPT"
+# The search family reports "no lines selected" through status 1 as well.
+badge_is 1 '%F{yellow}no match [exit 1]%f' 'grep -c TODO notes.txt'
+badge_is 1 '%F{yellow}no match [exit 1]%f' 'egrep needle notes.txt'
+badge_is 1 '%F{yellow}no match [exit 1]%f' 'fgrep needle notes.txt'
+badge_is 1 '%F{yellow}no match [exit 1]%f' 'rg needle .'
+badge_is 1 '%F{yellow}no match [exit 1]%f' 'ag needle .'
+badge_is 1 '%F{yellow}no match [exit 1]%f' 'ack needle .'
+badge_is 1 '%F{yellow}no match [exit 1]%f' 'git grep needle'
 
-_human_shell_compose ''
-check "no badge and no existing right prompt leaves an empty right prompt" \
-  '' "$RPROMPT"
+# For grep, status 2 is a real error: an unreadable file or a bad pattern.
+badge_is 2 '%F{red}failed [exit 2]%f' 'grep needle /nope/x'
 
-# A theme that sets RPROMPT from its own hook must be adopted, not discarded.
-HUMAN_SHELL_OUTER_RPROMPT=''
-HUMAN_SHELL_LAST_RPROMPT=''
+# A command not in the table is still a plain failure at status 1.
+badge_is 1 '%F{red}failed [exit 1]%f' 'ls /nope'
+badge_is 1 '%F{red}failed [exit 1]%f' 'git status'
+badge_is 1 '%F{red}failed [exit 1]%f' ''
+
+# For diff, status 2 really is an error, so it stays red.
+badge_is 2   '%F{red}failed [exit 2]%f'   'diff -u a.txt b.txt'
+badge_is 127 '%F{red}not found [exit 127]%f' 'diff -u a.txt b.txt'
+
+# Status 0 is unaffected by the table.
+badge_is 0 '%F{green}success [exit 0]%f' 'diff -u a.txt a.txt'
+
+# The label is reported in failures-only mode too: a difference is worth seeing.
+HUMAN_SHELL_STATUS=failures
+badge_is 1 '%F{yellow}diff detected [exit 1]%f' 'diff -u a.txt b.txt'
+HUMAN_SHELL_STATUS=all
+
+label_is() {
+  local description="$1" expected="$2" line="$3"
+  _human_shell_exit1_label "$line"
+  check "$description" "$expected" "$REPLY"
+}
+
+label_is "an absolute path is matched by its command name" \
+  "diff detected" "/usr/bin/diff a b"
+label_is "leading variable assignments are looked past" \
+  "diff detected" "LC_ALL=C diff a b"
+label_is "a wrapper that passes the status through is looked past" \
+  "diff detected" "sudo diff /etc/a /etc/b"
+label_is "a redirection does not stop the command being recognised" \
+  "diff detected" "diff a b > /tmp/out 2>&1"
+
+# In a compound line the status belongs to some other command, so the table
+# must not be applied: `diff a b | head` reports head's status, not diff's.
+label_is "a pipeline is not classified" "" "diff a b | head"
+label_is "an && list is not classified"  "" "diff a b && echo same"
+label_is "an || list is not classified"  "" "diff a b || echo differs"
+label_is "a ; list is not classified"    "" "diff a b; echo done"
+label_is "a background job is not classified" "" "diff a b &"
+label_is "an empty line is not classified" "" ""
+label_is "a command outside the table has no label" "" "ls -l"
+
+# The table is a documented extension point, so a user's entry must be honoured.
+HUMAN_SHELL_EXIT1_LABELS[my-checker]='nothing to do'
+label_is "an entry added by the user is honoured" "nothing to do" "my-checker --all"
+unset "HUMAN_SHELL_EXIT1_LABELS[my-checker]"
+
+# A user's own table must survive sourcing, and the default must be installed
+# for a user who has none. Both in a clean shell: sourcing with the mode set
+# registers the real hooks, which would then overwrite this harness's state.
+label_in_fresh_shell() {
+  local description="$1" expected="$2" preamble="$3" line="$4"
+  check "$description" "$expected" \
+    "$(zsh -c "$preamble
+               source '$repo/human-shell.zsh'
+               _human_shell_exit1_label '$line'
+               print -r -- \$REPLY")"
+}
+
+label_in_fresh_shell "the default table is installed for a user who has none" \
+  "diff detected" "" "diff a b"
+label_in_fresh_shell "the default table ships the search family too" \
+  "no match" "" "grep needle notes.txt"
+label_in_fresh_shell "sourcing does not overwrite a table the user set" \
+  "only this" "typeset -gA HUMAN_SHELL_EXIT1_LABELS=(mine 'only this')" "mine --go"
+label_in_fresh_shell "a user's own table replaces the default rather than merging" \
+  "" "typeset -gA HUMAN_SHELL_EXIT1_LABELS=(mine 'only this')" "diff a b"
+
+# ---------------------------------------------------------------------------
+# The report line: right-aligned, and printed only when there is a badge.
+# ---------------------------------------------------------------------------
+
+COLUMNS=40
+
+strip_colour() { sed $'s/\e\\[[0-9;]*m//g' }
+
+# COLUMNS 40, a 15-character badge, one column reserved at the right edge.
+check "the report is right-aligned one column short of the terminal width" \
+  "                        failed [exit 1]" \
+  "$(_human_shell_report '%F{red}failed [exit 1]%f' 'failed [exit 1]' | strip_colour)"
+
+check "the report carries the colour of the badge" \
+  "1" \
+  "$(_human_shell_report '%F{red}failed [exit 1]%f' 'failed [exit 1]' \
+     | grep -c $'\e\\[31m')"
+
+check "no badge prints nothing at all" \
+  "" "$(_human_shell_report '' '')"
+
+# A badge wider than the terminal is printed rather than shifted off-screen.
+COLUMNS=8
+check "a badge wider than the terminal is still printed in full" \
+  "failed [exit 1]" \
+  "$(_human_shell_report '%F{red}failed [exit 1]%f' 'failed [exit 1]' | strip_colour)"
+
+unset COLUMNS
+
+# RPROMPT belongs to the prompt it is drawn with, which is the prompt where the
+# next command is typed. Reporting there mislabelled the following command, so
+# nothing in Human Shell may write to RPROMPT at all any more.
+check "the shipped file never assigns RPROMPT" \
+  "0" "$(grep -c '^[^#]*RPROMPT=' "$repo/human-shell.zsh" || true)"
+
+# ---------------------------------------------------------------------------
+# One report per command.
+# ---------------------------------------------------------------------------
+
 HUMAN_SHELL_COMMAND_RAN=0
-RPROMPT='%F{magenta}SET-BY-THEME%f'
-_human_shell_precmd
-check "a right prompt installed by another hook is adopted as the base" \
-  '%F{magenta}SET-BY-THEME%f' "$HUMAN_SHELL_OUTER_RPROMPT"
-check "adopting another hook's right prompt leaves it on screen unchanged" \
-  '%F{magenta}SET-BY-THEME%f' "$RPROMPT"
+HUMAN_SHELL_LAST_COMMAND=''
 
-# ---------------------------------------------------------------------------
-# One badge per command.
-# ---------------------------------------------------------------------------
-
-HUMAN_SHELL_OUTER_RPROMPT='%F{blue}THEME%f'
-RPROMPT='%F{blue}THEME%f'
-HUMAN_SHELL_LAST_RPROMPT='%F{blue}THEME%f'
-
-_human_shell_preexec
+_human_shell_preexec 'false'
 check "preexec marks that a command ran" "1" "$HUMAN_SHELL_COMMAND_RAN"
+check "preexec remembers the command line" "false" "$HUMAN_SHELL_LAST_COMMAND"
 
-(exit 42); _human_shell_precmd
 check "precmd reports the status of the command that just ran" \
-  '%F{red}failed [exit 42]%f %F{blue}THEME%f' "$RPROMPT"
+  "failed [exit 42]" \
+  "$( (exit 42); _human_shell_precmd 2>&1 | sed $'s/\e\\[[0-9;]*m//g;s/^ *//' )"
+
+# The subshell above cannot clear the marker in this shell, so run it here too.
+(exit 42); _human_shell_precmd >/dev/null
 check "precmd clears the command marker after reporting once" \
   "0" "$HUMAN_SHELL_COMMAND_RAN"
 
-# A bare Enter runs no command, so there is no outcome to report.
-_human_shell_precmd
-check "a bare Enter clears the badge instead of repeating it" \
-  '%F{blue}THEME%f' "$RPROMPT"
+# A bare Enter runs no command, so there is no outcome to report -- and the
+# report already printed for the previous command stays in the scrollback.
+check "a bare Enter prints nothing rather than repeating the last report" \
+  "" "$(_human_shell_precmd 2>&1)"
+
+# The command line reaches the table through precmd, not only through a direct
+# call, so a real diff is reported as a difference end to end.
+_human_shell_preexec 'diff -u a.txt b.txt'
+check "a diff reported through precmd is a yellow difference, not a red failure" \
+  "diff detected [exit 1]" \
+  "$( (exit 1); _human_shell_precmd 2>&1 | sed $'s/\e\\[[0-9;]*m//g;s/^ *//' )"
+HUMAN_SHELL_COMMAND_RAN=0
 
 # ---------------------------------------------------------------------------
 # The launcher's bootstrap line is never recorded in history.

@@ -4,7 +4,7 @@ import gzip, hashlib, io, os, stat, sys, tarfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = sys.argv[1] if len(sys.argv) > 1 else "1.2.1"
+VERSION = sys.argv[1] if len(sys.argv) > 1 else "1.3.0"
 DIST = ROOT / "dist"
 PREFIX = f"human-shell-{VERSION}"
 FILES = [
