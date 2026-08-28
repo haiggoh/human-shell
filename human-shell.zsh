@@ -5,6 +5,14 @@ autoload -Uz add-zsh-hook
 human-shell() {
   local mode
 
+  # Details are an in-session action, not a request to launch another shell.
+  if [[ "${1-}" == "details" ]]; then
+    shift
+    typeset -g HUMAN_SHELL_SUPPRESS_REPORT=1
+    _human_shell_details "$@"
+    return $?
+  fi
+
   case "${1:---all}" in
     all|--all)
       mode=all
@@ -13,7 +21,7 @@ human-shell() {
       mode=failures
       ;;
     *)
-      print -u2 "Usage: human-shell [--all|--failures]"
+      print -u2 "Usage: human-shell [--all|--failures|details]"
       return 2
       ;;
   esac
@@ -28,9 +36,204 @@ human-shell() {
   HUMAN_SHELL_READY=0 HUMAN_SHELL_STATUS="$mode" command zsh -l
 }
 
+# The full snapshot renderer is added after hook integration. Keeping the
+# function present now gives both dispatchers one stable internal target.
+_human_shell_details() {
+  print -r -- 'No multiline diagnostics are available.'
+  return 0
+}
+
+_human_shell_human_dispatch() {
+  case "${1-}" in
+    details)
+      shift
+      human-shell details "$@"
+      ;;
+    *)
+      print -u2 -- 'Usage: human details'
+      return 2
+      ;;
+  esac
+}
+
+_human_shell_install_human_shortcut() {
+  # `human` is intentionally optional. Never replace an existing alias,
+  # function, builtin, reserved word, hashed command, or PATH executable.
+  if (( ${+aliases[human]} ||
+        ${+functions[human]} ||
+        ${+builtins[human]} ||
+        ${+reswords[human]} )); then
+    return 0
+  fi
+
+  if command -v human >/dev/null 2>&1; then
+    return 0
+  fi
+
+  functions[human]="${functions[_human_shell_human_dispatch]}"
+  return 0
+}
+
 _human_shell_preexec() {
   typeset -g HUMAN_SHELL_COMMAND_RAN=1
   typeset -g HUMAN_SHELL_LAST_COMMAND="$1"
+}
+
+# Experimental multiline diagnostics are deliberately separate from the normal
+# preexec/precmd path. These functions expose the collector lifecycle for tests;
+# interactive hooks do not call them until the collector has passed its safety
+# and differential test gates.
+_human_shell_diagnostics_has_zerr_trap() {
+  local trap_line
+
+  # Function-form traps live in the special functions table.
+  if (( ${+functions[TRAPZERR]} )); then
+    return 0
+  fi
+
+  # List-form traps do not appear there. The trap builtin renders each one as a
+  # line ending in its signal name, so inspect only actual trap declarations.
+  while IFS= read -r trap_line; do
+    if [[ "$trap_line" == 'trap -- '* && "$trap_line" == *' ZERR' ]]; then
+      return 0
+    fi
+  done < <(trap)
+
+  return 1
+}
+
+_human_shell_diagnostics_reset() {
+  # Trap changes must persist even when the caller enables LOCAL_TRAPS, while
+  # LOCAL_OPTIONS restores the caller's option state when this function returns.
+  setopt local_options no_local_traps
+
+  # Remove a trap only when it is still exactly the function Human Shell
+  # installed. A user replacement remains entirely under user ownership.
+  if [[ -n "${_HUMAN_SHELL_DIAG_TRAP_BODY-}" ]] &&
+     (( ${+functions[TRAPZERR]} )) &&
+     [[ "${functions[TRAPZERR]}" == "$_HUMAN_SHELL_DIAG_TRAP_BODY" ]]; then
+    unfunction TRAPZERR 2>/dev/null || true
+  fi
+
+  typeset -g _HUMAN_SHELL_DIAG_ACTIVE=0
+  typeset -g _HUMAN_SHELL_DIAG_STATE=idle
+  typeset -g _HUMAN_SHELL_DIAG_REASON=''
+  typeset -g _HUMAN_SHELL_DIAG_SOURCE=''
+  typeset -g _HUMAN_SHELL_DIAG_OVERALL_STATUS=''
+  typeset -g _HUMAN_SHELL_DIAG_OVERFLOW=0
+  typeset -g _HUMAN_SHELL_DIAG_TRAP_BODY=''
+
+  typeset -ga _HUMAN_SHELL_DIAG_EVENT_STATUS=()
+  typeset -ga _HUMAN_SHELL_DIAG_EVENT_PIPELINE=()
+  typeset -ga _HUMAN_SHELL_DIAG_EVENT_TRACE=()
+
+  return 0
+}
+
+_human_shell_diagnostics_begin() {
+  local source="$1" LC_ALL=C
+
+  # Trap installation must persist even when the caller enables LOCAL_TRAPS.
+  # LOCAL_OPTIONS keeps this option change confined to the function call.
+  setopt local_options no_local_traps
+
+  # Disabled and single-line commands must not disturb the last frozen
+  # multiline snapshot. They remain on Human Shell's existing aggregate path.
+  [[ "${HUMAN_SHELL_DIAGNOSTICS:-off}" == "details" ]] || return 0
+  [[ "$source" == *$'\n'* ]] || return 0
+
+  # A new qualifying multiline command replaces the preceding snapshot.
+  _human_shell_diagnostics_reset
+
+  # Bound retained source text before installing a trap. LC_ALL=C makes the
+  # scalar length a byte count for this raw interactive input.
+  if (( ${#source} > 262144 )); then
+    typeset -g _HUMAN_SHELL_DIAG_STATE=unavailable
+    typeset -g _HUMAN_SHELL_DIAG_REASON='source exceeds 256 KiB'
+    return 0
+  fi
+
+  # ZERR is a singleton resource. Never chain, wrap, replace, or replay a trap
+  # belonging to the user or another shell integration.
+  if _human_shell_diagnostics_has_zerr_trap; then
+    typeset -g _HUMAN_SHELL_DIAG_STATE=unavailable
+    typeset -g _HUMAN_SHELL_DIAG_REASON='existing ZERR trap'
+    return 0
+  fi
+
+  if ! zmodload zsh/parameter 2>/dev/null; then
+    typeset -g _HUMAN_SHELL_DIAG_STATE=unavailable
+    typeset -g _HUMAN_SHELL_DIAG_REASON='zsh/parameter unavailable'
+    return 0
+  fi
+
+  typeset -g _HUMAN_SHELL_DIAG_SOURCE="$source"
+  typeset -g _HUMAN_SHELL_DIAG_ACTIVE=1
+  typeset -g _HUMAN_SHELL_DIAG_STATE=collecting
+
+  # The first command atomically expands both status parameters before any trap
+  # command can alter them. The trap performs no I/O and invokes no subprocess.
+  functions[TRAPZERR]='
+    local -a _human_shell_diag_capture=( "$?" "${pipestatus[@]}" )
+    local _human_shell_diag_pipeline=""
+
+    if [[ "${_HUMAN_SHELL_DIAG_ACTIVE:-0}" == "1" ]]; then
+      if (( ${#_HUMAN_SHELL_DIAG_EVENT_STATUS} < 256 )); then
+        if (( ${#_human_shell_diag_capture} > 1 )); then
+          _human_shell_diag_pipeline="${(j:,:)_human_shell_diag_capture[2,-1]}"
+        fi
+
+        _HUMAN_SHELL_DIAG_EVENT_STATUS+=(
+          "${_human_shell_diag_capture[1]}"
+        )
+        _HUMAN_SHELL_DIAG_EVENT_PIPELINE+=(
+          "$_human_shell_diag_pipeline"
+        )
+        _HUMAN_SHELL_DIAG_EVENT_TRACE+=(
+          "${funcfiletrace[1]-}"
+        )
+      else
+        typeset -g _HUMAN_SHELL_DIAG_OVERFLOW=1
+      fi
+    fi
+
+    return 0
+  '
+
+  # Save zsh's normalized body, not the source literal, for exact ownership
+  # verification during finish/reset.
+  typeset -g _HUMAN_SHELL_DIAG_TRAP_BODY="${functions[TRAPZERR]}"
+
+  return 0
+}
+
+_human_shell_diagnostics_finish() {
+  local overall_status="$1"
+
+  # As during installation, cleanup must persist without changing the caller's
+  # LOCAL_TRAPS setting.
+  setopt local_options no_local_traps
+
+  [[ "${_HUMAN_SHELL_DIAG_ACTIVE:-0}" == "1" ]] || return 0
+
+  typeset -g _HUMAN_SHELL_DIAG_OVERALL_STATUS="$overall_status"
+  typeset -g _HUMAN_SHELL_DIAG_ACTIVE=0
+
+  if (( ${+functions[TRAPZERR]} )) &&
+     [[ "${functions[TRAPZERR]}" == "${_HUMAN_SHELL_DIAG_TRAP_BODY-}" ]]; then
+    unfunction TRAPZERR 2>/dev/null || true
+    typeset -g _HUMAN_SHELL_DIAG_STATE=complete
+    typeset -g _HUMAN_SHELL_DIAG_REASON=''
+  else
+    # The block removed or replaced the temporary trap. Do not restore or remove
+    # anything: preserve the resulting user-owned trap state and mark the
+    # snapshot incomplete.
+    typeset -g _HUMAN_SHELL_DIAG_STATE=incomplete
+    typeset -g _HUMAN_SHELL_DIAG_REASON='ZERR trap changed during collection'
+  fi
+
+  typeset -g _HUMAN_SHELL_DIAG_TRAP_BODY=''
+  return 0
 }
 
 # Keep the launcher's own bootstrap line out of history. The Dock launchers
@@ -246,6 +449,13 @@ _human_shell_precmd() {
   # exactly where they were printed.
   typeset -g HUMAN_SHELL_COMMAND_RAN=0
 
+  # Internal presentation commands describe the preceding multiline snapshot.
+  # A second success badge for the presentation command itself adds no value.
+  if [[ "${HUMAN_SHELL_SUPPRESS_REPORT:-0}" == "1" ]]; then
+    typeset -g HUMAN_SHELL_SUPPRESS_REPORT=0
+    return 0
+  fi
+
   _human_shell_badge "$exit_code" "${HUMAN_SHELL_LAST_COMMAND-}"
   _human_shell_report "$HUMAN_SHELL_BADGE" "$HUMAN_SHELL_BADGE_TEXT"
 }
@@ -259,6 +469,15 @@ case "${HUMAN_SHELL_STATUS:-}" in
     typeset -g HUMAN_SHELL_BADGE_TEXT=''
     typeset -g HUMAN_SHELL_LAST_COMMAND=''
     typeset -g HUMAN_SHELL_COMMAND_RAN=0
+    typeset -g HUMAN_SHELL_SUPPRESS_REPORT=0
+
+    # Collection is a primary Human Shell feature. Users may still opt out by
+    # setting HUMAN_SHELL_DIAGNOSTICS=off before the file is sourced.
+    if (( ! ${+HUMAN_SHELL_DIAGNOSTICS} )); then
+      typeset -g HUMAN_SHELL_DIAGNOSTICS=details
+    fi
+
+    _human_shell_install_human_shortcut
 
     add-zsh-hook -d preexec _human_shell_preexec 2>/dev/null || true
     add-zsh-hook -d precmd _human_shell_precmd 2>/dev/null || true

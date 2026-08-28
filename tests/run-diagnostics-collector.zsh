@@ -235,6 +235,73 @@ check "a list-form conflict retains no source text" \
 trap - ZERR
 _human_shell_diagnostics_reset
 
+# Caller option state is preserved, while Human Shell's trap installation and
+# cleanup still persist when LOCAL_TRAPS is enabled.
+setopt local_traps
+HUMAN_SHELL_DIAGNOSTICS=details
+_human_shell_diagnostics_begin $'false\ntrue'
+
+check "LOCAL_TRAPS remains enabled after collector installation" \
+  "on" "$([[ -o LOCAL_TRAPS ]] && print on || print off)"
+check "the collector trap persists with LOCAL_TRAPS enabled" \
+  "1" "$(( ${+functions[TRAPZERR]} ))"
+
+false
+true
+
+check "collection works with LOCAL_TRAPS enabled" \
+  "1" "${#_HUMAN_SHELL_DIAG_EVENT_STATUS}"
+check "collection retains the failure with LOCAL_TRAPS enabled" \
+  "1" "${_HUMAN_SHELL_DIAG_EVENT_STATUS[1]-}"
+
+_human_shell_diagnostics_finish 0
+
+check "LOCAL_TRAPS remains enabled after collector cleanup" \
+  "on" "$([[ -o LOCAL_TRAPS ]] && print on || print off)"
+check "collector cleanup persists with LOCAL_TRAPS enabled" \
+  "0" "$(( ${+functions[TRAPZERR]} ))"
+check "the LOCAL_TRAPS snapshot completes normally" \
+  "complete" "${_HUMAN_SHELL_DIAG_STATE:-missing}"
+
+unsetopt local_traps
+_human_shell_diagnostics_reset
+
+# Source retention is bounded at 256 KiB. The exact boundary is accepted.
+typeset source_at_limit=$'\n'"${(l:262143::x:)}"
+
+HUMAN_SHELL_DIAGNOSTICS=details
+_human_shell_diagnostics_begin "$source_at_limit"
+
+check "a source exactly 256 KiB is accepted" \
+  "1" "${_HUMAN_SHELL_DIAG_ACTIVE:-0}"
+check "the exact source limit is retained completely" \
+  "262144" "${#_HUMAN_SHELL_DIAG_SOURCE}"
+check "the exact source limit installs the collector trap" \
+  "1" "$(( ${+functions[TRAPZERR]} ))"
+
+_human_shell_diagnostics_finish 0
+_human_shell_diagnostics_reset
+
+# One byte beyond the bound fails closed without retaining source or occupying
+# the singleton ZERR trap.
+typeset source_over_limit="${source_at_limit}x"
+
+HUMAN_SHELL_DIAGNOSTICS=details
+_human_shell_diagnostics_begin "$source_over_limit"
+
+check "a source over 256 KiB does not arm collection" \
+  "0" "${_HUMAN_SHELL_DIAG_ACTIVE:-0}"
+check "an oversized source is recorded as unavailable" \
+  "unavailable" "${_HUMAN_SHELL_DIAG_STATE:-missing}"
+check "an oversized source records the size-limit reason" \
+  "source exceeds 256 KiB" "${_HUMAN_SHELL_DIAG_REASON-}"
+check "an oversized source is not retained" \
+  "" "${_HUMAN_SHELL_DIAG_SOURCE-}"
+check "an oversized source installs no trap" \
+  "0" "$(( ${+functions[TRAPZERR]} ))"
+
+_human_shell_diagnostics_reset
+
 # Storage is bounded. Additional events set an overflow flag rather than growing
 # the in-memory arrays without limit.
 HUMAN_SHELL_DIAGNOSTICS=details
