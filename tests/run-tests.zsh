@@ -22,6 +22,11 @@ check() {
   fi
 }
 
+# The suite is commonly launched from a Human Shell window. Clear inherited
+# launcher state before sourcing, or the real interactive hooks register in
+# this harness and interfere with its direct function tests.
+unset HUMAN_SHELL_STATUS HUMAN_SHELL_READY HUMAN_SHELL_LAUNCHER
+
 # Sourced with HUMAN_SHELL_STATUS unset, so the setup block does not run: no
 # hooks are registered and no banner is printed, leaving the functions to test.
 source "$repo/human-shell.zsh"
