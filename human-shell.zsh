@@ -181,6 +181,10 @@ _human_shell_install_human_shortcut() {
 _human_shell_preexec() {
   typeset -g HUMAN_SHELL_COMMAND_RAN=1
   typeset -g HUMAN_SHELL_LAST_COMMAND="$1"
+
+  # Only qualifying multiline commands arm the collector. Disabled diagnostics
+  # and single-line commands leave the previous frozen snapshot untouched.
+  _human_shell_diagnostics_begin "$1"
 }
 
 # Experimental multiline diagnostics are deliberately separate from the normal
@@ -552,6 +556,10 @@ _human_shell_precmd() {
   # because no command ran to have an outcome. Reports already printed stay
   # exactly where they were printed.
   typeset -g HUMAN_SHELL_COMMAND_RAN=0
+
+  # Freeze an armed multiline collection before either report suppression or
+  # aggregate badge rendering. The exit status was captured on function entry.
+  _human_shell_diagnostics_finish "$exit_code"
 
   # Internal presentation commands describe the preceding multiline snapshot.
   # A second success badge for the presentation command itself adds no value.

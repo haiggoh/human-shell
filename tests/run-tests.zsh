@@ -475,6 +475,13 @@ check "install.sh reaps the backups it writes itself" \
   "1" "$(grep -c "prefix '.zshrc.human-shell.'" "$repo/install.sh")"
 
 # ---------------------------------------------------------------------------
+# Interactive multiline-diagnostics hook integration.
+# ---------------------------------------------------------------------------
+
+/bin/zsh -f "$repo/tests/run-diagnostics-hooks.zsh"
+check "multiline diagnostics hook contract passes" "0" "$?"
+
+# ---------------------------------------------------------------------------
 # Frozen multiline-diagnostics rendering.
 # ---------------------------------------------------------------------------
 
