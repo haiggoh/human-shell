@@ -475,6 +475,13 @@ check "install.sh reaps the backups it writes itself" \
   "1" "$(grep -c "prefix '.zshrc.human-shell.'" "$repo/install.sh")"
 
 # ---------------------------------------------------------------------------
+# zsh execution semantics required by multiline diagnostics.
+# ---------------------------------------------------------------------------
+
+/bin/zsh -f "$repo/tests/run-diagnostics-semantics.zsh"
+check "zsh diagnostics semantics contract passes" "0" "$?"
+
+# ---------------------------------------------------------------------------
 # Shipped sources stay syntactically valid.
 # ---------------------------------------------------------------------------
 
