@@ -36,10 +36,114 @@ human-shell() {
   HUMAN_SHELL_READY=0 HUMAN_SHELL_STATUS="$mode" command zsh -l
 }
 
-# The full snapshot renderer is added after hook integration. Keeping the
-# function present now gives both dispatchers one stable internal target.
+# Convert an exit status into conservative diagnostic text. Intermediate status
+# 1 is anonymous because ZERR does not expose reliable command text; it must not
+# inherit diff/grep semantics from an unrelated line in the multiline source.
+_human_shell_diagnostics_status_text() {
+  local exit_code="$1" anonymous="${2:-0}"
+  local result
+  local saved_badge="${HUMAN_SHELL_BADGE-}"
+  local saved_badge_text="${HUMAN_SHELL_BADGE_TEXT-}"
+  local HUMAN_SHELL_STATUS=all
+
+  if [[ "$anonymous" == "1" && "$exit_code" == "1" ]]; then
+    result='observed nonzero status [exit 1]'
+  elif [[ "$exit_code" == <-> ]]; then
+    _human_shell_badge "$exit_code" ''
+    result="$HUMAN_SHELL_BADGE_TEXT"
+  else
+    result="observed nonzero status [exit ${(V)exit_code}]"
+  fi
+
+  typeset -g HUMAN_SHELL_BADGE="$saved_badge"
+  typeset -g HUMAN_SHELL_BADGE_TEXT="$saved_badge_text"
+  REPLY="$result"
+  return 0
+}
+
+# Render the frozen multiline snapshot. Renderer-controlled values use zsh's
+# visible representation so control bytes cannot act on the terminal.
 _human_shell_details() {
-  print -r -- 'No multiline diagnostics are available.'
+  local -i plain=0 clear=0 index event_count
+  local argument state reason overall_status event_status pipeline trace label
+
+  for argument in "$@"; do
+    case "$argument" in
+      --plain)
+        plain=1
+        ;;
+      --clear)
+        clear=1
+        ;;
+      *)
+        print -u2 -- 'Usage: human details [--plain] [--clear]'
+        return 2
+        ;;
+    esac
+  done
+
+  if (( clear )); then
+    _human_shell_diagnostics_reset
+    print -r -- 'Multiline diagnostics cleared.'
+    return 0
+  fi
+
+  state="${_HUMAN_SHELL_DIAG_STATE:-idle}"
+
+  if [[ "$state" == idle ]]; then
+    print -r -- 'No multiline diagnostics are available.'
+    return 0
+  fi
+
+  if (( ! plain )) && [[ -t 1 ]]; then
+    print -P -- '%BHuman Shell diagnostics%b'
+  else
+    print -r -- 'Human Shell diagnostics'
+  fi
+
+  print -r -- "Collection: ${(V)state}"
+
+  reason="${_HUMAN_SHELL_DIAG_REASON-}"
+  if [[ -n "$reason" ]]; then
+    print -r -- "Reason: ${(V)reason}"
+  fi
+
+  overall_status="${_HUMAN_SHELL_DIAG_OVERALL_STATUS-}"
+  if [[ -n "$overall_status" ]]; then
+    _human_shell_diagnostics_status_text "$overall_status" 0
+    print -r -- "Overall result: $REPLY"
+  fi
+
+  event_count=${#_HUMAN_SHELL_DIAG_EVENT_STATUS}
+  print -r -- "Observed nonzero events: $event_count"
+
+  for (( index = 1; index <= event_count; index += 1 )); do
+    event_status="${_HUMAN_SHELL_DIAG_EVENT_STATUS[index]-}"
+    pipeline="${_HUMAN_SHELL_DIAG_EVENT_PIPELINE[index]-}"
+    trace="${_HUMAN_SHELL_DIAG_EVENT_TRACE[index]-}"
+
+    _human_shell_diagnostics_status_text "$event_status" 1
+    label="$REPLY"
+
+    print -r --
+    print -r -- "Event $index: $label"
+
+    if [[ -n "$pipeline" ]]; then
+      print -r -- "  pipeline: ${(V)pipeline}"
+    fi
+
+    if [[ -n "$trace" ]]; then
+      print -r -- "  location candidate: ${(V)trace}"
+    else
+      print -r -- '  source location unavailable'
+    fi
+  done
+
+  if [[ "${_HUMAN_SHELL_DIAG_OVERFLOW:-0}" == "1" ]]; then
+    print -r --
+    print -r -- 'Additional events were omitted after the 256-event limit.'
+  fi
+
   return 0
 }
 
