@@ -2,7 +2,7 @@
 
 **Visible command outcomes for interactive zsh sessions in macOS Terminal.**
 
-Human Shell is an opt-in Terminal launcher that translates each command's exit status into a brief human label while preserving the exact technical code. Every command's outcome is reported on its own line, right-aligned beneath that command's output, so scrolling back through a session shows which commands passed and which failed rather than only the most recent one. The default all-status mode confirms success in green, shows ordinary failures in red, and uses yellow for interruptions, signal-driven stops, and findings such as a difference or no match.
+Human Shell is an opt-in Terminal launcher that translates each command's exit status into a brief human label while preserving the exact technical code. Every command's outcome is reported on its own line, right-aligned beneath that command's output, so scrolling back through a session shows which commands passed and which failed rather than only the most recent one. The default all-status mode confirms success in green, shows ordinary failures in red, and uses yellow for interruptions, signal-driven stops, and findings such as a difference or no match. Human Shell also automatically and silently observes unsuppressed nonzero events inside pasted multiline commands; run `human details` afterward to review the frozen diagnostic snapshot.
 
 A second **Human Shell Failures Only** launcher provides a quieter alternative that highlights nonzero exit codes without confirming successes. Both modes preserve normal command output, pipes, redirects, command substitutions, and unattended scripts.
 
@@ -23,6 +23,8 @@ Human Shell shows it, in the prompt, and nowhere else. The folklore is not wrong
 | `Human Shell.app` or `human-shell` | Default all-status mode: `success [exit 0]` or a humanized failure |
 | `Human Shell Failures Only.app` or `human-shell --failures` | Humanizes failures while keeping successes quiet |
 | `human-shell --all` | Explicit all-status mode |
+| `human details` | Show the latest multiline diagnostic snapshot when the short command name is available |
+| `human-shell details` | Guaranteed namespaced form of the details command |
 
 Neither mode displays a status on the initial prompt. Status reporting starts after the first command entered by the user.
 
@@ -61,7 +63,46 @@ Sourcing order does not matter for the status to appear. The installers append t
 
 Human Shell helps when manually validating setup commands, testing scripts and CLI tools, following debugging instructions, checking commands that are silent on success, or noticing failures after verbose output.
 
-It is not a debugger and does not inspect command internals. It surfaces the exit status already returned by the previous command.
+For an ordinary one-line command, Human Shell reports the command's aggregate exit status. For a pasted multiline command, it can also retain unsuppressed nonzero events observed by zsh while the block runs. It remains deliberately conservative: it does not rewrite the submitted source, intercept command output, or claim command identity or pasted line numbers that zsh has not established reliably.
+
+## Multiline diagnostics
+
+Multiline diagnostics are enabled automatically in both Human Shell modes. Collection is silent while the submitted block executes, and the existing final aggregate badge remains unchanged. After the block finishes, inspect the frozen snapshot with:
+
+```zsh
+human details
+```
+
+If another alias, function, builtin, reserved word, or executable already owns the name `human`, Human Shell leaves it untouched. The guaranteed namespaced command is:
+
+```zsh
+human-shell details
+```
+
+The details view reports:
+
+- whether collection completed, was unavailable, or became incomplete;
+- the complete block's aggregate exit status;
+- each observed nonzero event's scalar status and pipeline statuses;
+- a source-location candidate when zsh supplied one, otherwise `source location unavailable`;
+- whether additional events were omitted after the bounded 256-event limit.
+
+Intermediate status 1 is reported conservatively as `observed nonzero status [exit 1]`. Human Shell does not infer `diff detected` or `no match` from unrelated text elsewhere in the pasted block. Exact pasted-line attribution is not claimed in this release.
+
+Useful options are:
+
+```zsh
+human details --plain
+human details --clear
+```
+
+`--plain` suppresses presentation styling. `--clear` erases the retained source and events. To disable automatic collection, set:
+
+```zsh
+HUMAN_SHELL_DIAGNOSTICS=off
+```
+
+Collection is bounded to 256 KiB of source and 256 observed events. It fails closed rather than replacing or chaining an existing function-form or list-form ZERR trap. A recovered failure inside a successful subshell or command substitution cannot propagate through the parent shell's in-memory collector; if that child context itself finishes nonzero, its aggregate failure may still be observed.
 
 ## Installation
 
@@ -80,9 +121,9 @@ The formula depends on `dockutil` because placing the launchers in the Dock is p
 ### Standalone release installer
 
 ```zsh
-curl -fLO https://github.com/haiggoh/human-shell/releases/download/v1.3.1/human-shell-installer-v1.3.1.zsh
-zsh -n human-shell-installer-v1.3.1.zsh
-zsh human-shell-installer-v1.3.1.zsh
+curl -fLO https://github.com/haiggoh/human-shell/releases/download/v1.4.0/human-shell-installer-v1.4.0.zsh
+zsh -n human-shell-installer-v1.4.0.zsh
+zsh human-shell-installer-v1.4.0.zsh
 source ~/.zshrc
 ```
 
@@ -155,7 +196,7 @@ Or define `HUMAN_SHELL_EXIT1_LABELS` before sourcing to replace the defaults out
 
 ## Isolation
 
-Human Shell is opt-in. Ordinary Terminal windows and noninteractive scripts remain unchanged. Prompt indicators are not written to stdout, stderr, pipes, redirected files, or command substitutions.
+Human Shell is opt-in. Ordinary Terminal windows and noninteractive scripts remain unchanged. Outcome indicators are not written to stdout, stderr, pipes, redirected files, or command substitutions. Multiline collection is also silent during execution; diagnostic presentation occurs only when the user explicitly runs `human details` or `human-shell details`.
 
 ## What the launchers do
 
@@ -191,7 +232,7 @@ Both are pruned by `scripts/reap-backups.zsh` after the install succeeds, so nei
 zsh tests/run-tests.zsh
 ```
 
-The suite covers the exit-status-to-label table including the signal fallbacks, the status-1 findings table for both the diff and search families including the commands it must *not* classify, the right-aligned report line, the one-status-per-command rule, the history filter, and a syntax or compile check of every shipped script and applet. It needs no terminal and changes nothing on the system.
+The suite covers the exit-status-to-label table including signal fallbacks; status-1 findings and the commands that must not be classified; right-aligned reporting; one outcome per command; history filtering; zsh ZERR semantics; bounded and conflict-safe collection; renderer and command-interface behavior; interactive hook integration; diagnostics-on versus diagnostics-off differential safety for output, redirects, heredocs, substitutions, pipelines, shell state, descriptors, and existing traps; plus syntax or compile checks for every shipped script and applet. It needs no interactive terminal and changes nothing on the system.
 
 ## Terminal icon
 

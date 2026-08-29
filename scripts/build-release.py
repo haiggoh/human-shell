@@ -5,7 +5,7 @@ import subprocess, hashlib, io, os, stat, sys, tarfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = sys.argv[1] if len(sys.argv) > 1 else "1.3.1"
+VERSION = sys.argv[1] if len(sys.argv) > 1 else "1.4.0"
 DIST = ROOT / "dist"
 PREFIX = f"human-shell-{VERSION}"
 FILES = [
@@ -13,12 +13,24 @@ FILES = [
     "Human Shell Failures Only.applescript", "install.sh", "uninstall.sh",
     "README.md", "LICENSE", "CHANGELOG.md",
     "scripts/scrub-launcher-history.zsh", "scripts/reap-backups.zsh",
+    "tests/run-diagnostics-collector.zsh",
+    "tests/run-diagnostics-differential.zsh",
+    "tests/run-diagnostics-hooks.zsh",
+    "tests/run-diagnostics-interface.zsh",
+    "tests/run-diagnostics-renderer.zsh",
+    "tests/run-diagnostics-semantics.zsh",
     "tests/run-tests.zsh",
 ]
 DIRS = ["scripts", "tests"]
 EXECUTABLE = {
     "install.sh", "uninstall.sh",
     "scripts/scrub-launcher-history.zsh", "scripts/reap-backups.zsh",
+    "tests/run-diagnostics-collector.zsh",
+    "tests/run-diagnostics-differential.zsh",
+    "tests/run-diagnostics-hooks.zsh",
+    "tests/run-diagnostics-interface.zsh",
+    "tests/run-diagnostics-renderer.zsh",
+    "tests/run-diagnostics-semantics.zsh",
     "tests/run-tests.zsh",
 }
 
