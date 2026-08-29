@@ -1,7 +1,7 @@
 #!/bin/zsh -f
-# Contract tests for Human Shell's opt-in multiline diagnostics collector.
-# This file is intentionally added before the collector implementation and is
-# wired into the complete suite only after the implementation satisfies it.
+# Contract tests for Human Shell's multiline diagnostics collector. The low-level
+# API remains inert until details mode arms it for a qualifying multiline
+# submission; active Human Shell sessions enable that mode by default.
 
 emulate -R zsh
 setopt no_aliases

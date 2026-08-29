@@ -185,20 +185,62 @@ check "a later single-line command preserves snapshot source" \
 check "a later single-line command preserves snapshot events" \
   "1" "${(j:,:)_HUMAN_SHELL_DIAG_EVENT_STATUS}"
 
-capture_preexec 'human details'
-typeset -g HUMAN_SHELL_SUPPRESS_REPORT=1
+typeset continued_details_source=$'human-shell details \\\n  --plain'
+
+capture_preexec "$continued_details_source"
+
+check "standalone continued details preexec requests report suppression" \
+  "1" "${HUMAN_SHELL_SUPPRESS_REPORT:-0}"
+check "standalone continued details installs no collector trap" \
+  "0" "$(( ${+functions[TRAPZERR]} ))"
+check "standalone continued details preserves snapshot state before rendering" \
+  "complete" "$_HUMAN_SHELL_DIAG_STATE"
+check "standalone continued details preserves snapshot source before rendering" \
+  "$multiline_source" "$_HUMAN_SHELL_DIAG_SOURCE"
+check "standalone continued details preserves snapshot events before rendering" \
+  "1" "${(j:,:)_HUMAN_SHELL_DIAG_EVENT_STATUS}"
+
+human-shell details --plain >"$capture_dir/details-render" 2>&1
 capture_precmd 0
 
-check "details precmd emits no ordinary badge" \
+check "standalone continued details precmd emits no ordinary badge" \
   "" "$HOOK_OUTPUT"
-check "details precmd consumes report suppression" \
+check "standalone continued details consumes report suppression" \
   "0" "${HUMAN_SHELL_SUPPRESS_REPORT:-0}"
-check "details precmd preserves snapshot state" \
+check "standalone continued details preserves snapshot state" \
   "complete" "$_HUMAN_SHELL_DIAG_STATE"
-check "details precmd preserves snapshot source" \
+check "standalone continued details preserves snapshot source" \
   "$multiline_source" "$_HUMAN_SHELL_DIAG_SOURCE"
-check "details precmd preserves snapshot events" \
+check "standalone continued details preserves snapshot events" \
   "1" "${(j:,:)_HUMAN_SHELL_DIAG_EVENT_STATUS}"
+
+typeset nested_details_source=$'print before\nhuman-shell details --plain\nfalse'
+
+capture_preexec "$nested_details_source"
+
+check "nested details preexec does not request report suppression" \
+  "0" "${HUMAN_SHELL_SUPPRESS_REPORT:-0}"
+
+human-shell details --plain >"$capture_dir/nested-details-render" 2>&1
+false
+capture_precmd 1
+
+check "nested details keeps the enclosing multiline failure badge" \
+  "failed [exit 1]" "$(strip_report "$HOOK_OUTPUT")"
+check "nested details leaves its multiline snapshot complete" \
+  "complete" "${_HUMAN_SHELL_DIAG_STATE:-missing}"
+
+capture_preexec 'human-shell details; false'
+
+check "compound details preexec does not request report suppression" \
+  "0" "${HUMAN_SHELL_SUPPRESS_REPORT:-0}"
+
+human-shell details --plain >"$capture_dir/compound-details-render" 2>&1
+false
+capture_precmd 1
+
+check "compound details keeps the enclosing command-list failure badge" \
+  "failed [exit 1]" "$(strip_report "$HOOK_OUTPUT")"
 
 # ---------------------------------------------------------------------------
 # Explicit off and trap conflicts remain fail-closed.

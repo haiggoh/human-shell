@@ -159,6 +159,98 @@ HUMAN_SHELL_QUOTED_HEREDOC
       _hs_finish_case "${captured[@]}"
       ;;
 
+    err-exit)
+      HS_REPO="$repo" \
+      HS_MODE="$mode" \
+      HS_SOURCE=$'print before\nfalse\nprint after' \
+        /bin/zsh -f -c '
+          emulate -R zsh
+          setopt no_aliases
+
+          source "$HS_REPO/human-shell.zsh" || exit 90
+
+          HUMAN_SHELL_DIAGNOSTICS="$HS_MODE"
+          _human_shell_diagnostics_reset
+
+          setopt err_exit
+          _human_shell_diagnostics_begin "$HS_SOURCE"
+
+          print -r -- before
+          false
+          print -r -- after
+        ' >"$result_dir/child.stdout" 2>"$result_dir/child.stderr"
+
+      child_exit=$?
+      print -r -- "child_exit=$child_exit" >"$result_dir/child.status"
+
+      captured=( 0 0 )
+      _hs_finish_case "${captured[@]}"
+      ;;
+
+    err-return)
+      HS_REPO="$repo" \
+      HS_MODE="$mode" \
+      HS_SOURCE=$'f() {\n  print function-before\n  false\n  print function-after\n}\nf\nprint caller-after' \
+        /bin/zsh -f -c '
+          emulate -R zsh
+          setopt no_aliases
+
+          source "$HS_REPO/human-shell.zsh" || exit 90
+
+          HUMAN_SHELL_DIAGNOSTICS="$HS_MODE"
+          _human_shell_diagnostics_reset
+
+          setopt err_return
+          _human_shell_diagnostics_begin "$HS_SOURCE"
+
+          f() {
+            print -r -- function-before
+            false
+            print -r -- function-after
+          }
+
+          f
+          function_exit=$?
+
+          print -r -- "function_exit=$function_exit"
+          print -r -- caller-after
+
+          _human_shell_diagnostics_finish "$function_exit"
+          exit 0
+        ' >"$result_dir/child.stdout" 2>"$result_dir/child.stderr"
+
+      child_exit=$?
+      print -r -- "child_exit=$child_exit" >"$result_dir/child.status"
+
+      captured=( 0 0 )
+      _hs_finish_case "${captured[@]}"
+      ;;
+
+    exec-replacement)
+      HS_REPO="$repo" \
+      HS_MODE="$mode" \
+      HS_SOURCE=$'print before\nexec /bin/zsh -f -c replacement' \
+        /bin/zsh -f -c '
+          emulate -R zsh
+          setopt no_aliases
+
+          source "$HS_REPO/human-shell.zsh" || exit 90
+
+          HUMAN_SHELL_DIAGNOSTICS="$HS_MODE"
+          _human_shell_diagnostics_reset
+          _human_shell_diagnostics_begin "$HS_SOURCE"
+
+          print -r -- before-exec
+          exec /bin/zsh -f -c "print -r -- replacement-output; exit 7"
+        ' >"$result_dir/child.stdout" 2>"$result_dir/child.stderr"
+
+      child_exit=$?
+      print -r -- "child_exit=$child_exit" >"$result_dir/child.status"
+
+      captured=( 0 0 )
+      _hs_finish_case "${captured[@]}"
+      ;;
+
     trap-conflict)
       typeset -gi _HS_USER_TRAP_COUNT=0
 
@@ -240,6 +332,9 @@ scenarios=(
   substitution
   pipeline
   shell-state
+  err-exit
+  err-return
+  exec-replacement
   trap-conflict
 )
 

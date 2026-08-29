@@ -67,7 +67,8 @@ check "an active user can explicitly disable automatic collection" \
       print -r -- "${HUMAN_SHELL_DIAGNOSTICS-unset}:$(( ${+functions[human]} ))"
     ')"
 
-# Existing user functions and aliases named human must remain untouched.
+# Existing user functions, aliases, and global aliases named human must
+# remain untouched.
 check "an existing human function is preserved" \
   "same:original-human" \
   "$(fresh '
@@ -90,6 +91,20 @@ check "an existing human alias is preserved" \
       HUMAN_SHELL_READY=1
       source "$HS_REPO/human-shell.zsh"
       after="${aliases[human]}"
+      [[ "$before" == "$after" ]] && state=same || state=changed
+      print -r -- "$state:$after:$(( ${+functions[human]} ))"
+    ')"
+
+check "an existing human global alias is preserved" \
+  "same:GLOBAL_HUMAN:0" \
+  "$(fresh '
+      setopt aliases
+      alias -g human=GLOBAL_HUMAN
+      before="${galiases[human]}"
+      HUMAN_SHELL_STATUS=all
+      HUMAN_SHELL_READY=1
+      source "$HS_REPO/human-shell.zsh"
+      after="${galiases[human]}"
       [[ "$before" == "$after" ]] && state=same || state=changed
       print -r -- "$state:$after:$(( ${+functions[human]} ))"
     ')"
@@ -144,13 +159,13 @@ check "human-shell details returns success" \
   "0" "$details_status"
 check "human-shell details routes renderer arguments" \
   "--plain" "$_HS_DETAILS_CALLED"
-check "human-shell details suppresses its own ordinary badge" \
-  "1" "${HUMAN_SHELL_SUPPRESS_REPORT:-0}"
+check "direct details dispatch leaves report suppression to preexec" \
+  "0" "${HUMAN_SHELL_SUPPRESS_REPORT:-0}"
 
 # The preferred shorthand routes through the same renderer in an active Human
 # Shell and accepts detail options.
 check "human details routes to the diagnostics renderer" \
-  "--clear:0:1" \
+  "--clear:0:0" \
   "$(fresh '
       HUMAN_SHELL_STATUS=all
       HUMAN_SHELL_READY=1

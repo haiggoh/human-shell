@@ -8,7 +8,6 @@ human-shell() {
   # Details are an in-session action, not a request to launch another shell.
   if [[ "${1-}" == "details" ]]; then
     shift
-    typeset -g HUMAN_SHELL_SUPPRESS_REPORT=1
     _human_shell_details "$@"
     return $?
   fi
@@ -164,13 +163,14 @@ _human_shell_install_human_shortcut() {
   # `human` is intentionally optional. Never replace an existing alias,
   # function, builtin, reserved word, hashed command, or PATH executable.
   if (( ${+aliases[human]} ||
+        ${+galiases[human]} ||
         ${+functions[human]} ||
         ${+builtins[human]} ||
         ${+reswords[human]} )); then
     return 0
   fi
 
-  if command -v human >/dev/null 2>&1; then
+  if command -v -- 'human' >/dev/null 2>&1; then
     return 0
   fi
 
@@ -178,19 +178,72 @@ _human_shell_install_human_shortcut() {
   return 0
 }
 
+_human_shell_is_details_submission() {
+  local source="$1" first argument
+  local -a words
+  local -i index
+
+  words=(${(z)source})
+  (( $#words >= 2 )) || return 1
+
+  first="${words[1]}"
+
+  case "$first" in
+    'human-shell')
+      ;;
+
+    'human')
+      (( ${+functions[human]} )) || return 1
+
+      [[ "${functions[human]}" ==
+         "${functions[_human_shell_human_dispatch]}" ]] ||
+        return 1
+      ;;
+
+    *)
+      return 1
+      ;;
+  esac
+
+  [[ "${words[2]}" == details ]] || return 1
+
+  for (( index = 3; index <= $#words; index += 1 )); do
+    argument="${words[index]}"
+
+    case "$argument" in
+      --plain|--clear)
+        ;;
+
+      *)
+        return 1
+        ;;
+    esac
+  done
+
+  return 0
+}
+
 _human_shell_preexec() {
   typeset -g HUMAN_SHELL_COMMAND_RAN=1
   typeset -g HUMAN_SHELL_LAST_COMMAND="$1"
+  typeset -g HUMAN_SHELL_SUPPRESS_REPORT=0
+
+  # Suppress only a standalone, valid details submission. Continued details
+  # input is still one semantic command; compound or nested calls retain the
+  # enclosing command's aggregate badge.
+  if _human_shell_is_details_submission "$1"; then
+    typeset -g HUMAN_SHELL_SUPPRESS_REPORT=1
+    return 0
+  fi
 
   # Only qualifying multiline commands arm the collector. Disabled diagnostics
   # and single-line commands leave the previous frozen snapshot untouched.
   _human_shell_diagnostics_begin "$1"
 }
 
-# Experimental multiline diagnostics are deliberately separate from the normal
-# preexec/precmd path. These functions expose the collector lifecycle for tests;
-# interactive hooks do not call them until the collector has passed its safety
-# and differential test gates.
+# Multiline diagnostics integrate with preexec/precmd while keeping collection
+# and rendering separate. The collector is silent, bounded, and fail-closed
+# around user-owned ZERR traps.
 _human_shell_diagnostics_has_zerr_trap() {
   local trap_line
 
@@ -303,6 +356,13 @@ _human_shell_diagnostics_begin() {
       else
         typeset -g _HUMAN_SHELL_DIAG_OVERFLOW=1
       fi
+    fi
+
+    # ERR_RETURN and ERR_EXIT require the original nonzero status to keep
+    # their native control flow. With both options off, return success so an
+    # ordinary recovered failure remains recoverable exactly as before.
+    if [[ -o ERR_RETURN || -o ERR_EXIT ]]; then
+      return "${_human_shell_diag_capture[1]}"
     fi
 
     return 0
