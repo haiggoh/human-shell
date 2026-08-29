@@ -475,6 +475,13 @@ check "install.sh reaps the backups it writes itself" \
   "1" "$(grep -c "prefix '.zshrc.human-shell.'" "$repo/install.sh")"
 
 # ---------------------------------------------------------------------------
+# Diagnostics-on versus diagnostics-off differential safety.
+# ---------------------------------------------------------------------------
+
+/bin/zsh -f "$repo/tests/run-diagnostics-differential.zsh"
+check "multiline diagnostics differential safety passes" "0" "$?"
+
+# ---------------------------------------------------------------------------
 # Interactive multiline-diagnostics hook integration.
 # ---------------------------------------------------------------------------
 
