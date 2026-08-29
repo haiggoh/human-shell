@@ -22,6 +22,11 @@ check() {
   fi
 }
 
+# The suite is commonly launched from a Human Shell window. Clear inherited
+# launcher state before sourcing, or the real interactive hooks register in
+# this harness and interfere with its direct function tests.
+unset HUMAN_SHELL_STATUS HUMAN_SHELL_READY HUMAN_SHELL_LAUNCHER
+
 # Sourced with HUMAN_SHELL_STATUS unset, so the setup block does not run: no
 # hooks are registered and no banner is printed, leaving the functions to test.
 source "$repo/human-shell.zsh"
@@ -468,6 +473,34 @@ check "install.sh actually invokes the reaper, not just mentions it" \
   "1" "$(grep -cE '^[[:space:]]*zsh "\$repo/scripts/reap-backups\.zsh"' "$repo/install.sh")"
 check "install.sh reaps the backups it writes itself" \
   "1" "$(grep -c "prefix '.zshrc.human-shell.'" "$repo/install.sh")"
+
+# ---------------------------------------------------------------------------
+# Diagnostics-on versus diagnostics-off differential safety.
+# ---------------------------------------------------------------------------
+
+/bin/zsh -f "$repo/tests/run-diagnostics-differential.zsh"
+check "multiline diagnostics differential safety passes" "0" "$?"
+
+# ---------------------------------------------------------------------------
+# Interactive multiline-diagnostics hook integration.
+# ---------------------------------------------------------------------------
+
+/bin/zsh -f "$repo/tests/run-diagnostics-hooks.zsh"
+check "multiline diagnostics hook contract passes" "0" "$?"
+
+# ---------------------------------------------------------------------------
+# Frozen multiline-diagnostics rendering.
+# ---------------------------------------------------------------------------
+
+/bin/zsh -f "$repo/tests/run-diagnostics-renderer.zsh"
+check "multiline diagnostics renderer contract passes" "0" "$?"
+
+# ---------------------------------------------------------------------------
+# zsh execution semantics required by multiline diagnostics.
+# ---------------------------------------------------------------------------
+
+/bin/zsh -f "$repo/tests/run-diagnostics-semantics.zsh"
+check "zsh diagnostics semantics contract passes" "0" "$?"
 
 # ---------------------------------------------------------------------------
 # Shipped sources stay syntactically valid.

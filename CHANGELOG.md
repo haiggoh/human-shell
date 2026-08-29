@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.4.0
+
+Added
+
+- Automatic, silent multiline diagnostics in both Human Shell modes. Qualifying pasted multiline commands use a temporary, bounded ZERR collector to retain unsuppressed nonzero events without rewriting the command, intercepting stdout or stderr, or changing the existing final aggregate badge.
+- `human details` for reviewing the latest frozen multiline snapshot, with guaranteed fallback `human-shell details`. The short `human` command is installed only when that name is otherwise unused. `--plain` removes presentation styling and `--clear` erases retained source and events.
+- Conservative event details: scalar status, pipeline statuses, collection completeness, overflow state, and a zsh source-location candidate when available. Anonymous intermediate status 1 is not guessed to mean a diff or search finding, and exact pasted-line numbers are not claimed.
+- Dedicated contracts for zsh semantics, bounded collection, ZERR conflicts, `LOCAL_TRAPS`, renderer safety, command-name collisions, hook integration, and diagnostics-on versus diagnostics-off differential behavior across output, redirects, heredocs, substitutions, pipelines, shell state, file descriptors, and existing traps.
+
+Safety
+
+- Collection fails closed when a function-form or list-form ZERR trap already exists, and preserves a trap installed or replaced by submitted code.
+- Retained source is limited to 256 KiB and observed events to 256. Control characters in displayed diagnostic metadata are rendered visibly rather than executed by the terminal.
+- Failures recovered inside successful subshells or command substitutions remain outside the parent shell's in-memory snapshot; the documentation states this process boundary explicitly.
+
+Changed
+
+- The standalone release example and deterministic release-builder default now target version 1.4.0.
+- The release manifest now includes every shipped diagnostics contract so an extracted archive can run its complete self-test suite.
+
 ## 1.3.1
 
 Fixed
